@@ -28,6 +28,13 @@ def packet_parser(packet: scapy.Packet) -> ParsedPacket:
     if packet.haslayer("IP"):
         src_ip = packet["IP"].src
         dst_ip = packet["IP"].dst
+    elif packet.haslayer("IPv6"):
+        src_ip = packet["IPv6"].src
+        dst_ip = packet["IPv6"].dst
+    elif packet.haslayer("ARP"):
+        src_ip = packet["ARP"].psrc
+        dst_ip = packet["ARP"].pdst
+        protocol = "ARP"
 
     if packet.haslayer("TCP"):
         protocol = "TCP"
