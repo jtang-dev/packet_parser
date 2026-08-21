@@ -1,42 +1,91 @@
-from collections import deque
-from datetime import datetime, timedelta, timezone
+from rich.layout import Layout
+from rich.table import Table
 
-from ingestion.parser import ParsedPacket
-
-
-class NetworkStats:
-
-    def __init__(self, max_display_packets: int=20, max_display_alerts: int=10, window_minutes: int = 5):
-        self.recent_packets = deque(maxlen=max_display_packets)
-        self.recent_alerts = deque(maxlen=max_display_alerts)
-        self.ip_history: dict[str, list[datetime]] = {}
-        self.window_duration = timedelta(minutes=window_minutes)
-        self.top_ips: list[tuple[str, int]] = []
-
-    def record_packet(self, packet: ParsedPacket):
-        ip_address = packet.src_ip if packet.src_ip != "192.168.86.60" else packet.dst_ip
-        self.ip_history.setdefault(ip_address, []).append(packet.timestamp)
-        self.recent_packets.append(packet)
+from output.stats import NetworkStats
 
 
-    def prune_and_rank(self, limit: int = 5):
-        cutoff = datetime.now(timezone.utc) - self.window_duration
+def make_layout() -> Layout:
+    layout = Layout()
 
-        for ip, timestamps in list(self.ip_history.items()):
-            idx = 0
-            while idx < len(timestamps) and timestamps[idx] < cutoff:
-                idx += 1
+    layout.split_row(
+        Layout(name="left", ratio=1),
+        Layout(name="right", ratio=1)
+    )
 
-            if idx > 0:
-                self.ip_history[ip] = timestamps[idx:]
+    layout["right"].split_column(
+        Layout(name="alerts", ratio=1),
+        Layout(name="stats", ratio=1)
+    )
 
-            if not self.ip_history[ip]:
-                del self.ip_history[ip]
+    layout["stats"].split_row(
+        Layout(name="top_ips", ratio=1),
+        Layout(name="top_ports", ratio=1)
+    )
 
-        sorted_ips = sorted(
-            self.ip_history.items(),
-            key=lambda item: len(item[1]),
-            reverse=True
-        )
+    return layout
 
-        self.top_ips = [(ip, len(timestamps)) for ip, timestamps in sorted_ips[:limit]]
+def render_packets(stats) -> Table:
+    table = Table(title="Incoming and Outgoing Packets", expand=True)
+
+    table.add_column("Time", width=12, justify="left", style="green", no_wrap=True)
+    table.add_column("Source", ratio=3, style="green", overflow="ellipsis", no_wrap=True)
+    table.add_column("Destination", ratio=3, style="green", overflow="ellipsis", no_wrap=True)
+    table.add_column("Protocol", width=10, justify="right", style="green", no_wrap=True)
+
+    for pkt in stats.recent_packets:
+        time_str = pkt.timestamp.strftime("%H:%M:%S") if pkt.timestamp else "N/A"
+        src_str = f"{pkt.src_ip}:{pkt.src_port}" if pkt.src_port is not None else str(pkt.src_ip)
+        dst_str = f"{pkt.dst_ip}:{pkt.dst_port}" if pkt.dst_port is not None else str(pkt.dst_ip)
+
+        table.add_row(time_str, src_str, dst_str, str(pkt.protocol))
+
+    return table
+
+def render_alerts(stats: NetworkStats) -> Table:
+    table = Table(title="Recent Alerts:", expand=True)
+
+    table.add_column("Time", justify="left", style="magenta")
+    table.add_column("Severity", justify="left", style="magenta")
+    table.add_column("Rule", style="magenta")
+    table.add_column("Source", style="magenta")
+    table.add_column("Ports", justify="right", style="magenta")
+
+    for alert in stats.recent_alerts:
+        time_str = alert.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if alert.timestamp else "N/A"
+        sev_str = str(alert.rule.severity.value) if hasattr(alert.rule.severity, "value") else str(alert.rule.severity)
+        rule_str = f"{alert.rule.name}" if hasattr(alert.rule, "name") else str(getattr(alert, "rule_name", "N/A"))
+        src_str = f"{alert.packet.src_ip}"
+        ports_str = f"{', '.join(str(i) for i in alert.scanned_ports)}" if alert.scanned_ports is not None else "N/A"
+
+        table.add_row(time_str, sev_str, rule_str, src_str, ports_str)
+
+    return table
+
+def render_top_ips(stats: NetworkStats) -> Table:
+    table = Table(title="Most Common IP Communications:", expand=True)
+
+    table.add_column("IP Address", justify="left", style="cyan")
+    table.add_column("Hits", justify="right", style="cyan")
+
+    for ip, hits in stats.top_ips:
+        table.add_row(str(ip), str(hits))
+
+    return table
+
+def render_top_ports(stats: NetworkStats) -> Table:
+    table = Table(title="Most Common Port Destinations:", expand=True)
+
+    table.add_column("Port", justify="left", style="cyan")
+    table.add_column("Hits", justify="right", style="cyan")
+
+    for port, hits in stats.top_ports:
+        table.add_row(str(port), str(hits))
+
+    return table
+
+def update_layout(layout: Layout, stats: NetworkStats) -> Layout:
+    layout["left"].update(render_packets(stats))
+    layout["alerts"].update(render_alerts(stats))
+    layout["top_ips"].update(render_top_ips(stats))
+    layout["top_ports"].update(render_top_ports(stats))
+    return layout

@@ -1,6 +1,12 @@
 import argparse
 import sys
+import threading
+import time
+from rich.live import Live
+
 from ingestion.sniffer import start_sniffing
+from output.stats import NetworkStats
+from output.dashboard import make_layout, update_layout
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Lightweight Network IDS")
@@ -26,14 +32,30 @@ def parse_args():
 
 def main():
     args = parse_args()
-    print("[*] Starting Network Intrusion Detection System...")
+
+    stats = NetworkStats()
 
     try:
-        start_sniffing(
-            interface=args.interface,
-            pcap_file=args.pcap,
-            count=args.count
+        sniff_thread = threading.Thread(
+            target=start_sniffing,
+            kwargs={
+                "interface": args.interface,
+                "pcap_file": args.pcap,
+                "count": args.count,
+                "stats": stats
+            },
+            daemon=True
         )
+        sniff_thread.start()
+
+        layout = make_layout()
+
+        with Live(layout, refresh_per_second=4, screen=True) as live:
+            while True:
+                stats.prune_and_rank(limit=10)
+                update_layout(layout, stats)
+                time.sleep(0.25)
+
     except KeyboardInterrupt:
         print("\n[*] Stopping capture and exiting cleanly...")
         sys.exit(0)

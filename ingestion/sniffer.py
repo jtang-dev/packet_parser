@@ -2,19 +2,24 @@ import scapy.all as scapy
 
 from detection.engine import DetectionEngine
 from ingestion.parser import packet_parser
-from output.logger import log_alert
 
 engine = DetectionEngine()
 
-def _handle_packet(raw_packet):
-    parsed = packet_parser(raw_packet)
+
+def _handle_packet(raw_pkt, stats, engine):
+    parsed = packet_parser(raw_pkt)
+    stats.record_packet(parsed)
+    stats.record_port(parsed)
+
     alerts = engine.evaluate(parsed)
     for alert in alerts:
-        log_alert(alert)
-    print(parsed)
+        stats.record_alert(alert)
 
-def start_sniffing(interface: str = None, pcap_file: str = None, count: int = 0):
+
+def start_sniffing(interface: str = None, pcap_file: str = None, count: int = 0, stats=None):
+    callback = lambda pkt: _handle_packet(pkt, stats, engine)
+
     if pcap_file:
-        scapy.sniff(offline=pcap_file, prn=_handle_packet, store=False, count=count)
+        scapy.sniff(offline=pcap_file, prn=callback, store=False, count=count)
     else:
-        scapy.sniff(iface=interface, prn=_handle_packet, store=False, count=count)
+        scapy.sniff(iface=interface, prn=callback, store=False, count=count)
