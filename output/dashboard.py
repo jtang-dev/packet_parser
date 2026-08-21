@@ -1,5 +1,6 @@
 from rich.layout import Layout
 from rich.table import Table
+import msvcrt
 
 from output.stats import NetworkStats
 
@@ -24,15 +25,18 @@ def make_layout() -> Layout:
 
     return layout
 
-def render_packets(stats) -> Table:
-    table = Table(title="Incoming and Outgoing Packets", expand=True)
+
+def render_packets(packets_to_display: list, is_paused: bool = False) -> Table:
+    title = "Incoming and Outgoing Packets [PAUSED - Press 'p' to Resume]" if is_paused else "Incoming and Outgoing Packets [Live - Press 'p' to Pause]"
+
+    table = Table(title=title, expand=True)
 
     table.add_column("Time", width=12, justify="left", style="green", no_wrap=True)
     table.add_column("Source", ratio=3, style="green", overflow="ellipsis", no_wrap=True)
     table.add_column("Destination", ratio=3, style="green", overflow="ellipsis", no_wrap=True)
     table.add_column("Protocol", width=10, justify="right", style="green", no_wrap=True)
 
-    for pkt in stats.recent_packets:
+    for pkt in packets_to_display:
         time_str = pkt.timestamp.strftime("%H:%M:%S") if pkt.timestamp else "N/A"
         src_str = f"{pkt.src_ip}:{pkt.src_port}" if pkt.src_port is not None else str(pkt.src_ip)
         dst_str = f"{pkt.dst_ip}:{pkt.dst_port}" if pkt.dst_port is not None else str(pkt.dst_ip)
@@ -83,8 +87,22 @@ def render_top_ports(stats: NetworkStats) -> Table:
 
     return table
 
-def update_layout(layout: Layout, stats: NetworkStats) -> Layout:
-    layout["left"].update(render_packets(stats))
+def check_pause_toggle(is_paused: bool) -> bool:
+    if msvcrt.kbhit():
+        key = msvcrt.getch()
+        if key in (b'p', b'P', b' '):
+            return not is_paused
+    return is_paused
+
+
+def update_layout(
+        layout: Layout,
+        stats: NetworkStats,
+        display_packets: list | None = None,
+        is_paused: bool = False) -> Layout:
+    packets = display_packets if display_packets is not None else stats.recent_packets
+
+    layout["left"].update(render_packets(packets, is_paused=is_paused))
     layout["alerts"].update(render_alerts(stats))
     layout["top_ips"].update(render_top_ips(stats))
     layout["top_ports"].update(render_top_ports(stats))
