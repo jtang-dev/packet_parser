@@ -6,7 +6,7 @@ from rich.live import Live
 
 from ingestion.sniffer import start_sniffing
 from output.stats import NetworkStats
-from output.dashboard import make_layout, update_layout, check_pause_toggle
+from output.dashboard import make_layout, update_layout, handle_input
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Lightweight Network IDS")
@@ -36,6 +36,7 @@ def main():
     stats = NetworkStats()
     is_paused = False
     frozen_packets = []
+    selected_idx = -1
 
     try:
         sniff_thread = threading.Thread(
@@ -52,21 +53,32 @@ def main():
 
         layout = make_layout()
 
-        with Live(layout, refresh_per_second=4, screen=True) as live:
+        with Live(layout, refresh_per_second=12, screen=True) as live:
             while True:
+                stats.prune_and_rank(limit=10)
+                item_count = len(stats.top_ips)
 
-                new_pause_state = check_pause_toggle(is_paused)
+                new_pause_state, selected_idx = handle_input(is_paused, selected_idx, item_count)
                 if new_pause_state and not is_paused:
                     frozen_packets = list(stats.recent_packets)
-
                 is_paused = new_pause_state
-
-                stats.prune_and_rank(limit=10)
 
                 display_packets = frozen_packets if is_paused else list(stats.recent_packets)
 
-                live.update(update_layout(layout, stats, display_packets=display_packets, is_paused=is_paused))
-                time.sleep(0.1)
+                if stats.top_ips and 0 <= selected_idx < len(stats.top_ips):
+                    selected_ip = stats.top_ips[selected_idx][0]
+                else:
+                    selected_ip = None
+
+                live.update(update_layout(
+                    layout,
+                    stats,
+                    selected_idx=selected_idx,
+                    selected_ip=selected_ip,
+                    display_packets=display_packets,
+                    is_paused=is_paused
+                ))
+                time.sleep(0.03)
 
     except KeyboardInterrupt:
         print("\n[*] Stopping capture and exiting cleanly...")

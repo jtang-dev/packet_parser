@@ -25,7 +25,6 @@ def make_layout() -> Layout:
 
     return layout
 
-
 def render_packets(packets_to_display: list, is_paused: bool = False) -> Table:
     title = "Incoming and Outgoing Packets [PAUSED - Press 'p' to Resume]" if is_paused else "Incoming and Outgoing Packets [Live - Press 'p' to Pause]"
 
@@ -65,45 +64,62 @@ def render_alerts(stats: NetworkStats) -> Table:
 
     return table
 
-def render_top_ips(stats: NetworkStats) -> Table:
+def render_top_ips(stats: NetworkStats, selected_idx: int) -> Table:
     table = Table(title="Most Common IP Communications:", expand=True)
 
     table.add_column("IP Address", justify="left", style="cyan")
     table.add_column("Hits", justify="right", style="cyan")
 
-    for ip, hits in stats.top_ips:
-        table.add_row(str(ip), str(hits))
+    for idx, (ip, hits) in enumerate(stats.top_ips):
+        if idx == selected_idx:
+            table.add_row(f"> [bold yellow]{ip}[/]", f"[bold yellow]{hits}[/]")
+        else:
+            table.add_row(f"  {ip}", str(hits))
 
     return table
 
-def render_top_ports(stats: NetworkStats) -> Table:
-    table = Table(title="Most Common Port Destinations:", expand=True)
+def render_top_ports(ports: list[tuple[int, int]], table_title: str) -> Table:
+    table = Table(title=table_title, expand=True)
 
     table.add_column("Port", justify="left", style="cyan")
     table.add_column("Hits", justify="right", style="cyan")
 
-    for port, hits in stats.top_ports:
+    for port, hits in ports:
         table.add_row(str(port), str(hits))
 
     return table
 
-def check_pause_toggle(is_paused: bool) -> bool:
+def handle_input(is_paused: bool, selected_idx: int, item_count: int):
     if msvcrt.kbhit():
         key = msvcrt.getch()
         if key in (b'p', b'P', b' '):
-            return not is_paused
-    return is_paused
-
+            return not is_paused, selected_idx
+        if key in (b'\x1b', b'c'):
+            return is_paused, -1
+        if key in (b'\x00', b'\xe0'):
+            key = msvcrt.getch()
+            if key == b'H':
+                selected_idx = max(-1, selected_idx - 1)
+            if key == b'P':
+                selected_idx = min(item_count - 1, selected_idx + 1)
+    return is_paused, selected_idx
 
 def update_layout(
         layout: Layout,
         stats: NetworkStats,
+        selected_idx: int,
+        selected_ip: str | None,
         display_packets: list | None = None,
         is_paused: bool = False) -> Layout:
     packets = display_packets if display_packets is not None else stats.recent_packets
 
     layout["left"].update(render_packets(packets, is_paused=is_paused))
     layout["alerts"].update(render_alerts(stats))
-    layout["top_ips"].update(render_top_ips(stats))
-    layout["top_ports"].update(render_top_ports(stats))
+    layout["top_ips"].update(render_top_ips(stats, selected_idx))
+    ports = stats.get_ports_for_ip(selected_ip)
+    if selected_ip and (ports := stats.get_ports_for_ip(selected_ip)):
+        layout["top_ports"].update(render_top_ports(ports, f"Most Common Port Destinations for {selected_ip}:"))
+    else:
+        layout["top_ports"].update(render_top_ports(stats.top_ports, "Most Common Port Destinations:"))
+
     return layout
