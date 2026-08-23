@@ -15,7 +15,7 @@ def make_layout() -> Layout:
 
     layout["right"].split_column(
         Layout(name="alerts", ratio=1),
-        Layout(name="stats", ratio=1)
+        Layout(name="stats", size=15)
     )
 
     layout["stats"].split_row(
@@ -70,11 +70,14 @@ def render_top_ips(stats: NetworkStats, selected_idx: int) -> Table:
     table.add_column("IP Address", justify="left", style="cyan")
     table.add_column("Hits", justify="right", style="cyan")
 
-    for idx, (ip, hits) in enumerate(stats.top_ips):
+    for idx, (ip, hits) in enumerate(stats.top_ips[:10]):
         if idx == selected_idx:
             table.add_row(f"> [bold yellow]{ip}[/]", f"[bold yellow]{hits}[/]")
         else:
             table.add_row(f"  {ip}", str(hits))
+
+    for _ in range(10 - len(stats.top_ips[:10])):
+        table.add_row("", "")
 
     return table
 
@@ -84,8 +87,11 @@ def render_top_ports(ports: list[tuple[int, int]], table_title: str) -> Table:
     table.add_column("Port", justify="left", style="cyan")
     table.add_column("Hits", justify="right", style="cyan")
 
-    for port, hits in ports:
+    for port, hits in ports[:10]:
         table.add_row(str(port), str(hits))
+
+    for _ in range(10 - len(ports[:10])):
+        table.add_row("", "")
 
     return table
 
@@ -104,6 +110,7 @@ def handle_input(is_paused: bool, selected_idx: int, item_count: int):
                 selected_idx = min(item_count - 1, selected_idx + 1)
     return is_paused, selected_idx
 
+
 def update_layout(
         layout: Layout,
         stats: NetworkStats,
@@ -116,6 +123,7 @@ def update_layout(
     layout["left"].update(render_packets(packets, is_paused=is_paused))
     layout["alerts"].update(render_alerts(stats))
     layout["top_ips"].update(render_top_ips(stats, selected_idx))
+
     ports = stats.get_ports_for_ip(selected_ip)
     if selected_ip and (ports := stats.get_ports_for_ip(selected_ip)):
         layout["top_ports"].update(render_top_ports(ports, f"Most Common Port Destinations for {selected_ip}:"))

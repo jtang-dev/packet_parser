@@ -2,6 +2,7 @@ import argparse
 import sys
 import threading
 import time
+import os
 from rich.live import Live
 
 from ingestion.sniffer import start_sniffing
