@@ -1,23 +1,18 @@
 import scapy.all as scapy
+import queue
 
-from detection.engine import DetectionEngine
 from ingestion.parser import packet_parser
 
-engine = DetectionEngine()
-
-
-def _handle_packet(raw_pkt, stats, engine):
+def _handle_packet(raw_pkt, packet_queue: queue.Queue):
     parsed = packet_parser(raw_pkt)
-    stats.record_packet(parsed)
-    stats.record_port(parsed)
+    if parsed is not None:
+        try:
+            packet_queue.put_nowait(parsed)
+        except queue.Full:
+            pass
 
-    alerts = engine.evaluate(parsed)
-    for alert in alerts:
-        stats.record_alert(alert)
-
-
-def start_sniffing(interface: str = None, pcap_file: str = None, count: int = 0, stats=None):
-    callback = lambda pkt: _handle_packet(pkt, stats, engine)
+def start_sniffing(interface: str = None, pcap_file: str = None, count: int = 0, packet_queue: queue.Queue = None):
+    callback = lambda pkt: _handle_packet(pkt, packet_queue)
 
     if pcap_file:
         scapy.sniff(offline=pcap_file, prn=callback, store=False, count=count)

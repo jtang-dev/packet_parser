@@ -1,10 +1,13 @@
 import argparse
+import queue
 import sys
 import threading
 import time
 import os
 from rich.live import Live
 
+from detection.engine import DetectionEngine
+from detection.worker import process_packet_worker
 from ingestion.sniffer import start_sniffing
 from output.stats import NetworkStats
 from output.dashboard import make_layout, update_layout, handle_input
@@ -38,6 +41,8 @@ def main():
     is_paused = False
     frozen_packets = []
     selected_idx = -1
+    packet_queue = queue.Queue()
+    engine = DetectionEngine()
 
     try:
         sniff_thread = threading.Thread(
@@ -46,11 +51,23 @@ def main():
                 "interface": args.interface,
                 "pcap_file": args.pcap,
                 "count": args.count,
-                "stats": stats
+                "packet_queue": packet_queue
             },
             daemon=True
         )
+
+        worker_thread = threading.Thread(
+            target=process_packet_worker,
+            kwargs={
+                "packet_queue": packet_queue,
+                "stats": stats,
+                "engine": engine
+            },
+            daemon=True
+        )
+
         sniff_thread.start()
+        worker_thread.start()
 
         layout = make_layout()
 
