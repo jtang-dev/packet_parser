@@ -3,12 +3,12 @@ import queue
 import sys
 import threading
 import time
-import os
 from rich.live import Live
 
 from detection.engine import DetectionEngine
 from detection.worker import process_packet_worker
 from ingestion.sniffer import start_sniffing
+from output.logger import export_session_summary
 from output.stats import NetworkStats
 from output.dashboard import make_layout, update_layout, handle_input
 
@@ -100,6 +100,8 @@ def main():
 
     except KeyboardInterrupt:
         print("\n[*] Stopping capture and exiting cleanly...")
+        export_session_summary(stats)
+        print("[*] Saved session_summary.json. Exiting cleanly.")
         sys.exit(0)
 
 if __name__ == "__main__":

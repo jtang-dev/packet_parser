@@ -57,7 +57,7 @@ def render_alerts(stats: NetworkStats) -> Table:
         time_str = alert.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if alert.timestamp else "N/A"
         sev_str = str(alert.rule.severity.value) if hasattr(alert.rule.severity, "value") else str(alert.rule.severity)
         rule_str = f"{alert.rule.name}" if hasattr(alert.rule, "name") else str(getattr(alert, "rule_name", "N/A"))
-        src_str = f"{alert.packet.src_ip}"
+        src_str = f"{alert.src_ip}"
         ports_str = f"{', '.join(str(i) for i in alert.scanned_ports)}" if alert.scanned_ports is not None else "N/A"
 
         table.add_row(time_str, sev_str, rule_str, src_str, ports_str)

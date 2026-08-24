@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 @dataclass
 class ParsedPacket:
+    frame_id: int
     src_ip: str
     dst_ip: str
     src_port: Optional[int | str]
@@ -17,8 +18,7 @@ class ParsedPacket:
         formatted_time = self.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if self.timestamp else "N/A"
         return f"[{formatted_time}] {self.protocol} {self.src_ip}:{self.src_port} -> {self.dst_ip}:{self.dst_port}"
 
-
-def packet_parser(packet: scapy.Packet) -> ParsedPacket:
+def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
     src_ip, dst_ip = "N/A", "N/A"
     src_port, dst_port = "N/A", "N/A"
     protocol = "OTHER"
@@ -46,4 +46,4 @@ def packet_parser(packet: scapy.Packet) -> ParsedPacket:
         src_port = packet["UDP"].sport
         dst_port = packet["UDP"].dport
 
-    return ParsedPacket(src_ip, dst_ip, src_port, dst_port, protocol, flags, pkt_time)
+    return ParsedPacket(frame_id, src_ip, dst_ip, src_port, dst_port, protocol, flags, pkt_time)
