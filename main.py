@@ -6,7 +6,7 @@ import time
 from rich.live import Live
 
 from detection.engine import DetectionEngine
-from detection.worker import process_packet_worker
+from detection.worker import process_packet_worker, process_logging_worker
 from ingestion.sniffer import start_sniffing
 from output.logger import export_session_summary
 from output.stats import NetworkStats
@@ -42,6 +42,7 @@ def main():
     frozen_packets = []
     selected_idx = -1
     packet_queue = queue.Queue()
+    alert_queue = queue.Queue(maxsize=10000)
     engine = DetectionEngine()
 
     try:
@@ -60,14 +61,24 @@ def main():
             target=process_packet_worker,
             kwargs={
                 "packet_queue": packet_queue,
+                "alert_queue": alert_queue,
                 "stats": stats,
                 "engine": engine
             },
             daemon=True
         )
 
+        alert_thread = threading.Thread(
+            target=process_logging_worker,
+            kwargs={
+                "alert_queue": alert_queue
+            },
+            daemon=True
+        )
+
         sniff_thread.start()
         worker_thread.start()
+        alert_thread.start()
 
         layout = make_layout()
 
@@ -100,6 +111,7 @@ def main():
 
     except KeyboardInterrupt:
         print("\n[*] Stopping capture and exiting cleanly...")
+        alert_queue.join()
         export_session_summary(stats)
         print("[*] Saved session_summary.json. Exiting cleanly.")
         sys.exit(0)

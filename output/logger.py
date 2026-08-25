@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime, timezone
+from typing import TextIO
 
 from alerting.models import Alert
 from output.stats import NetworkStats
@@ -10,10 +11,9 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
-def log_alert(alert: Alert, filepath: str = os.path.join(DATA_DIR, "alerts.jsonl")) -> None:
-    line = json.dumps(alert.to_dict())
-    with open(filepath, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
+def log_alert(alert: Alert, file_handle: TextIO) -> None:
+    file_handle.write(json.dumps(alert.to_dict()) + "\n")
+    file_handle.flush()
 
 
 def export_session_summary(stats: NetworkStats, filepath: str = os.path.join(DATA_DIR, "session_summary.json")) -> None:
