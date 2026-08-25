@@ -12,7 +12,7 @@ class AlertDeduplicator:
         self.states: Dict[Tuple[str, str], SuppressionState] = {}
         self._lock = threading.Lock()
 
-    def check_alert(self, alert: Alert, current_time: Optional[datetime] = None) -> bool:
+    def check_alert(self, alert: Alert, current_time: Optional[datetime] = None) -> Tuple[bool, int]:
         now = current_time or alert.timestamp or datetime.now(timezone.utc)
         key = (alert.rule_name, alert.src_ip)
 
@@ -20,26 +20,27 @@ class AlertDeduplicator:
             if key not in self.states:
                 self.states[key] = SuppressionState(last_emitted=now, last_seen=now, occurrence_count=1)
                 alert.set_count(1)
-                return True
+                return True, 1
 
             state = self.states[key]
 
             if (now - state.last_seen) > self.idle_timeout:
                 self.states[key] = SuppressionState(last_emitted=now, last_seen=now, occurrence_count=1)
                 alert.set_count(1)
-                return True
+                return True, 1
 
             if (now - state.last_emitted) < self.cooldown_duration:
                 state.occurrence_count += 1
                 state.last_seen = now
-                return False
+                alert.set_count(state.occurrence_count)
+                return False, state.occurrence_count
 
             aggregated_count = state.occurrence_count + 1
             state.occurrence_count = 1
             state.last_emitted = now
             state.last_seen = now
             alert.set_count(aggregated_count)
-            return True
+            return True, aggregated_count
 
     def prune_stale_states(self, current_time: Optional[datetime] = None) -> int:
         now = current_time or datetime.now(timezone.utc)

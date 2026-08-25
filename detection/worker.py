@@ -25,8 +25,11 @@ def process_packet_worker(
 
             alerts = engine.evaluate(packet)
             for alert in alerts:
-                if deduplicator.check_alert(alert):
-                    stats.record_alert(alert)
+                should_log, count = deduplicator.check_alert(alert)
+
+                stats.update_or_record_alert(alert)
+
+                if should_log:
                     try:
                         alert_queue.put_nowait(alert)
                     except queue.Full:

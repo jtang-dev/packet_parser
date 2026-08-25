@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import socket
 from typing import Any
 
+from alerting.models import Alert
 from ingestion.parser import ParsedPacket
 
 
@@ -95,3 +96,13 @@ class NetworkStats:
             self.top_ips = self._prune_and_rank_dict(self.ip_history, cutoff, limit)
             self.top_ports = self._prune_and_rank_dict(self.port_history, cutoff, limit)
             self.top_ip_to_ports = self._prune_nested_dict(self.ip_to_port, cutoff, limit)
+
+    def update_or_record_alert(self, alert: Alert) -> None:
+        with self._lock:
+            for existing in self.recent_alerts:
+                if existing.rule_name == alert.rule_name and existing.src_ip == alert.src_ip:
+                    existing.occurrence_count = alert.occurrence_count
+                    existing.timestamp = alert.timestamp
+                    return
+
+            self.recent_alerts.appendleft(alert)

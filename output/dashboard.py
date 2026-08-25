@@ -44,12 +44,14 @@ def render_packets(packets_to_display: list, is_paused: bool = False) -> Table:
 
     return table
 
+
 def render_alerts(stats: NetworkStats) -> Table:
     table = Table(title="Recent Alerts:", expand=True)
 
     table.add_column("Time", justify="left", style="magenta")
     table.add_column("Severity", justify="left", style="magenta")
     table.add_column("Rule", style="magenta")
+    table.add_column("Hits", justify="right", style="yellow")
     table.add_column("Source", style="magenta")
     table.add_column("Ports", justify="right", style="magenta")
 
@@ -57,10 +59,14 @@ def render_alerts(stats: NetworkStats) -> Table:
         time_str = alert.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if alert.timestamp else "N/A"
         sev_str = str(alert.rule.severity.value) if hasattr(alert.rule.severity, "value") else str(alert.rule.severity)
         rule_str = f"{alert.rule.name}" if hasattr(alert.rule, "name") else str(getattr(alert, "rule_name", "N/A"))
+
+        count = getattr(alert, "occurrence_count", 1)
+        count_str = f"[bold yellow]{count}[/]" if count > 1 else "[dim]1[/]"
+
         src_str = f"{alert.src_ip}"
         ports_str = f"{', '.join(str(i) for i in alert.scanned_ports)}" if alert.scanned_ports is not None else "N/A"
 
-        table.add_row(time_str, sev_str, rule_str, src_str, ports_str)
+        table.add_row(time_str, sev_str, rule_str, count_str, src_str, ports_str)
 
     return table
 
