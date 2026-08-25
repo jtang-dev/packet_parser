@@ -5,8 +5,9 @@ import threading
 import time
 from rich.live import Live
 
+from alerting.suppression import AlertDeduplicator
 from detection.engine import DetectionEngine
-from detection.worker import process_packet_worker, process_logging_worker
+from detection.worker import process_packet_worker, process_logging_worker, process_deduplication_cleanup_worker
 from ingestion.sniffer import start_sniffing
 from output.logger import export_session_summary
 from output.stats import NetworkStats
@@ -44,6 +45,7 @@ def main():
     packet_queue = queue.Queue()
     alert_queue = queue.Queue(maxsize=10000)
     engine = DetectionEngine()
+    deduplicator = AlertDeduplicator(cooldown_seconds=60, idle_timeout_seconds=300)
 
     try:
         sniff_thread = threading.Thread(
@@ -52,7 +54,7 @@ def main():
                 "interface": args.interface,
                 "pcap_file": args.pcap,
                 "count": args.count,
-                "packet_queue": packet_queue
+                "packet_queue": packet_queue,
             },
             daemon=True
         )
@@ -63,7 +65,8 @@ def main():
                 "packet_queue": packet_queue,
                 "alert_queue": alert_queue,
                 "stats": stats,
-                "engine": engine
+                "engine": engine,
+                "deduplicator": deduplicator,
             },
             daemon=True
         )
@@ -71,7 +74,7 @@ def main():
         alert_thread = threading.Thread(
             target=process_logging_worker,
             kwargs={
-                "alert_queue": alert_queue
+                "alert_queue": alert_queue,
             },
             daemon=True
         )
@@ -79,6 +82,14 @@ def main():
         sniff_thread.start()
         worker_thread.start()
         alert_thread.start()
+
+        if not args.pcap:
+            cleanup_thread = threading.Thread(
+                target=process_deduplication_cleanup_worker,
+                args=(deduplicator, 600),
+                daemon=True
+            )
+            cleanup_thread.start()
 
         layout = make_layout()
 
@@ -111,10 +122,12 @@ def main():
 
     except KeyboardInterrupt:
         print("\n[*] Stopping capture and exiting cleanly...")
+        packet_queue.join()
         alert_queue.join()
         export_session_summary(stats)
         print("[*] Saved session_summary.json. Exiting cleanly.")
         sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

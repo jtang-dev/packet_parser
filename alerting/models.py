@@ -18,6 +18,10 @@ class Alert:
     timestamp: Optional[datetime] = None
     scanned_ports: Optional[list[int]] = None
     _bounded_packets: deque[ParsedPacket] = field(init=False, repr=False)
+    occurrence_count: int = 1
+
+    def set_count(self, count: int) -> None:
+        self.occurrence_count = count
 
     def __post_init__(self):
         self._bounded_packets = deque(self.packets, maxlen=50)
@@ -56,6 +60,15 @@ class Alert:
         return {
             "timestamp": self.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if self.timestamp else "N/A",
             "rule": self.rule.name,
+            "src_ip": self.src_ip,
+            "dst_ip": self.dst_ip,
             "packet_ids": self.frame_ids,
-            "ports": self.scanned_ports if self.scanned_ports is not None else "N/A"
+            "ports": self.scanned_ports if self.scanned_ports is not None else "N/A",
+            "occurrence_count": self.occurrence_count,
         }
+
+@dataclass
+class SuppressionState:
+    last_emitted: datetime
+    last_seen: datetime
+    occurrence_count: int = 1
