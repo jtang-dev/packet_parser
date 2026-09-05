@@ -1,5 +1,7 @@
 from alerting.models import RuleMetadata
 
+# A structured way to store the various stateless TCP rules to allow reference in other classes and files.
+
 TCP_RULES = {
     "NULL": RuleMetadata(
         name="SCAN_TCP_NULL",

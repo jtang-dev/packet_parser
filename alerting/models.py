@@ -1,9 +1,10 @@
 from collections import deque
 from datetime import datetime, timezone
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence, Optional, Any
 
 from ingestion.parser import ParsedPacket
+
 
 @dataclass(frozen=True)
 class RuleMetadata:
@@ -11,24 +12,37 @@ class RuleMetadata:
     severity: str
     description: str
 
+
 @dataclass
 class Alert:
+    """Represents a security alert triggered by rule violations.
+
+    Attributes:
+        rule: Metadata defining the violated rule (name, severity, description).
+        packets: Sequence of packets associated with the alert, capped at 50 to bound memory.
+        timestamp: Time of detection (defaults to the timestamp of the latest packet or UTC now).
+        scanned_ports: List of destination ports probed (populated by port scan rules).
+        occurrence_count: Number of times this signature occurred within a suppression window.
+    """
     rule: RuleMetadata
     packets: Sequence[ParsedPacket]
     timestamp: Optional[datetime] = None
     scanned_ports: Optional[list[int]] = None
-    _bounded_packets: deque[ParsedPacket] = field(init=False, repr=False)
     occurrence_count: int = 1
 
     def set_count(self, count: int) -> None:
         self.occurrence_count = count
 
     def __post_init__(self):
-        self._bounded_packets = deque(self.packets, maxlen=50)
+        # Bound to the last 50 packets to free excess packet references for GC
+        if len(self.packets) > 50:
+            self.packets = list(self.packets[-50:])
+        elif not isinstance(self.packets, list):
+            self.packets = list(self.packets)
 
         if self.timestamp is None:
-            if self._bounded_packets and self._bounded_packets[-1].timestamp is not None:
-                self.timestamp = self._bounded_packets[-1].timestamp
+            if self.packets and self.packets[-1].timestamp is not None:
+                self.timestamp = self.packets[-1].timestamp
             else:
                 self.timestamp = datetime.now(timezone.utc)
 
@@ -54,7 +68,7 @@ class Alert:
 
     @property
     def frame_ids(self) -> list[int]:
-        return [p.frame_id for p in self._bounded_packets]
+        return [p.frame_id for p in self.packets]
 
     def to_dict(self) -> dict[str, Any]:
         return {
