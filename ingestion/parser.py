@@ -5,6 +5,19 @@ from dataclasses import dataclass
 
 @dataclass
 class ParsedPacket:
+    """
+    A custom packet dataclass built off of scapy's internal 'packet' class that allows for easier data access and modification.
+
+    :ivar frame_id: A unique identifier to differentiate between packets for triage purposes.
+    :ivar src_ip: The source ip of the packet.
+    :ivar dst_ip: The destination ip of the packet.
+    :ivar src_port: The source port of the packet.
+    :ivar dst_port: The destination port of the packet.
+    :ivar protocol: The specific protocol used by the packet (e.g. TCP, UDP, etc.).
+    :ivar flags: The TCP flags utilised by the packet.
+    :ivar timestamp: The time at which the packet was ingested.
+
+    """
     frame_id: int
     src_ip: str
     dst_ip: str
@@ -19,6 +32,13 @@ class ParsedPacket:
         return f"[{formatted_time}] {self.protocol} {self.src_ip}:{self.src_port} -> {self.dst_ip}:{self.dst_port}"
 
 def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
+    """
+    Converts scapy's 'packet' class into a custom packet dataclass.
+
+    :param packet: The packet to be converted.
+    :param frame_id: The unique identifier for the packet.
+    :return: The parsed packet.
+    """
     src_ip, dst_ip = "N/A", "N/A"
     src_port, dst_port = "N/A", "N/A"
     protocol = "OTHER"
