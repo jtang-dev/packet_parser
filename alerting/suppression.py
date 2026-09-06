@@ -14,7 +14,6 @@ class AlertDeduplicator:
 
     :arg cooldown_seconds: The amount of time to prevent an additional occurrence of an identical alert for the same attack.
     :arg idle_timeout_seconds: The amount of time after which the same attack is treated as a separate occurrence.
-
     """
     def __init__(self, cooldown_seconds: int = 60, idle_timeout_seconds: int = 300):
         self.cooldown_duration = timedelta(seconds=cooldown_seconds)

@@ -16,6 +16,16 @@ def process_packet_worker(
     engine: DetectionEngine,
     deduplicator: AlertDeduplicator,
 ) -> None:
+    """
+    A worker method to allow concurrency in the processing of packets and alerts,
+    preventing slowdown or dropped packets during high thoroughput.
+
+    :param packet_queue: Queue of packets to be processed.
+    :param alert_queue: Queue of alerts to be processed
+    :param stats: The data processing module that allows the gleaming of insights from packet data.
+    :param engine: The alert generation engine that checks for suspicious activity.
+    :param deduplicator: The alert deduplicator that prevents a spam of identical alerts for attacks such as port scans.
+    """
     while True:
         try:
             packet = packet_queue.get(block=True, timeout=0.1)
@@ -45,6 +55,12 @@ def process_logging_worker(
     alert_queue: queue.Queue,
     filepath: Optional[str] = None,
 ) -> None:
+    """
+    Worker method to allow the concurrent logging of alerts into an appropriate .json file.
+
+    :param alert_queue: Queue of alerts to be processed.
+    :param filepath: Points to the .json file.
+    """
     target_path = filepath if filepath is not None else os.path.join(DATA_DIR, "alerts.jsonl")
     with open(target_path, "a", encoding="utf-8") as f:
         while True:
@@ -60,6 +76,14 @@ def process_deduplication_cleanup_worker(
     deduplicator: AlertDeduplicator,
     interval_seconds: int = 600,
 ) -> None:
+    """
+    Prunes unnecessary entries for alert deduplication at a specified interval to prevent memory overload and cleanup unused
+    resources.
+
+    :param deduplicator: Alert deduplication engine.
+    :param interval_seconds: The interval at which stale deduplication entries are pruned.
+    :return:
+    """
     while True:
         time.sleep(interval_seconds)
         deduplicator.prune_stale_states()

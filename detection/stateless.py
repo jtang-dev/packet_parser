@@ -5,6 +5,13 @@ from alerting.registry import TCP_RULES
 from ingestion.parser import ParsedPacket
 
 def detect_suspicious_flags(parsed_packet: ParsedPacket) -> Optional[Alert]:
+    """
+    Checks incoming packets for malformed TCP flags that may indicate suspicious activity such as 'NULL' scans or 'XMAS'
+    scans.
+
+    :param parsed_packet: A packet that has been parsed to allow for easier data handling.
+    :return: An alert, if it is deemed that one is necessary.
+    """
     if parsed_packet.protocol == "TCP" and parsed_packet.flags is not None:
         flag_set = set(parsed_packet.flags)
 
