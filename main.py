@@ -14,6 +14,9 @@ from output.stats import NetworkStats
 from output.dashboard import make_layout, update_layout, handle_input
 
 def parse_args():
+    """
+    Handles argument parsing to allow various alterations to the behaviour of the program.
+    """
     parser = argparse.ArgumentParser(description="Lightweight Network IDS")
     parser.add_argument(
         "-i", "--interface",
@@ -36,6 +39,10 @@ def parse_args():
     return parser.parse_args()
 
 def main():
+    """
+    Main runner function that handles processes such as instantiation of global variables, beginning packet sniffing,
+    and handling concurrency across parallel processes.
+    """
     args = parse_args()
 
     stats = NetworkStats()
@@ -47,6 +54,7 @@ def main():
     engine = DetectionEngine()
     deduplicator = AlertDeduplicator(cooldown_seconds=60, idle_timeout_seconds=300)
 
+    # Concurrent worker threads for various parallel processes
     try:
         sniff_thread = threading.Thread(
             target=start_sniffing,
@@ -91,6 +99,7 @@ def main():
             )
             cleanup_thread.start()
 
+        # Handling of live UI updating using the Rich package
         layout = make_layout()
 
         with Live(layout, refresh_per_second=12, screen=True) as live:
@@ -120,6 +129,7 @@ def main():
                 ))
                 time.sleep(0.03)
 
+    # Cleanly terminates the program when a keyboard interrupt is received and saves data to relevant files
     except KeyboardInterrupt:
         print("\n[*] Stopping capture and exiting cleanly...")
         packet_queue.join()
