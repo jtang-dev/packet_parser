@@ -31,7 +31,6 @@ def process_packet_worker(
             packet = packet_queue.get(block=True, timeout=0.1)
 
             stats.record_packet(packet)
-            stats.record_port(packet)
 
             alerts = engine.evaluate(packet)
             for alert in alerts:

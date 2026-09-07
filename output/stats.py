@@ -9,6 +9,14 @@ from ingestion.parser import ParsedPacket
 
 
 class NetworkStats:
+    """
+    A data analysis class that gathers the top IPs, top ports, and top ports for each IP for analysis and triage.
+
+    :arg max_display_packets: The number of packets to display at once.
+    :arg max_display_alerts: The number of alerts to display at once.
+    :arg max_display_ports: The number of top ports to display at once
+    :arg window_minutes: The time frame over which top ports and ips are tracked for.
+    """
 
     def __init__(self, max_display_packets: int=45, max_display_alerts: int=10,max_display_ports: int=10,
                  window_minutes: int = 5):
@@ -33,12 +41,25 @@ class NetworkStats:
         s.close()
 
     def get_ports_for_ip(self, ip: str) -> list[tuple[int, int]]:
+        """
+        Looks up the top ports for a specific IP address.
+
+        :param ip: The IP to look up
+        :return: A list of tuples, mapping a port number, to the number of occurrences.
+        """
         return self.top_ip_to_ports.get(ip, [])
 
-    def record_packet(self, packet: ParsedPacket):
+    def record_packet(self, packet: ParsedPacket) -> None:
+        """
+        Ingests a packet and updates temporal tracking for IP addresses, destination ports,
+        and associated endpoint mappings under a single lock acquisition.
+
+        :param packet: The parsed packet to be ingested.
+        """
         with self._lock:
             pkt_time = packet.timestamp if packet.timestamp is not None else datetime.now(timezone.utc)
 
+            # Track IP communications
             ip_address = packet.src_ip if packet.src_ip != self.host_address else packet.dst_ip
             if ip_address and ip_address != "N/A":
                 self.ip_history.setdefault(ip_address, []).append(pkt_time)
@@ -46,20 +67,31 @@ class NetworkStats:
                 if isinstance(packet.dst_port, int):
                     self.ip_to_port.setdefault(ip_address, {}).setdefault(packet.dst_port, []).append(pkt_time)
 
-            self.recent_packets.append(packet)
-
-    def record_port(self, packet: ParsedPacket):
-        with self._lock:
+            # Track global destination port metrics
             if isinstance(packet.dst_port, int):
-                pkt_time = packet.timestamp if packet.timestamp is not None else datetime.now(timezone.utc)
                 self.port_history.setdefault(packet.dst_port, []).append(pkt_time)
                 self.recent_ports.append(packet.dst_port)
 
+            self.recent_packets.append(packet)
+
     def record_alert(self, alert):
+        """
+        Record incoming alerts for data analysis.
+
+        :param alert: The alert to be recorded
+        """
         self.recent_alerts.append(alert)
 
     @staticmethod
     def _prune_and_rank_dict(history: dict, cutoff: datetime, limit: int) -> list[tuple[Any, int]]:
+        """
+        An internal function used to prune old values from history and return the most common occurrences.
+
+        :param history: The history to be pruned and ranked.
+        :param cutoff: The time at which a packet should be pruned after.
+        :param limit: The number of topmost values to acquire.
+        :return: A list of tuples mapping a value (IP, port number) to number of occurrences.
+        """
         for key, timestamps in list(history.items()):
             idx = 0
             while idx < len(timestamps) and timestamps[idx] < cutoff:
@@ -79,6 +111,16 @@ class NetworkStats:
         return [(k, len(ts)) for k, ts in sorted_items[:limit]]
 
     def _prune_nested_dict(self, history: dict, cutoff: datetime, limit: int) -> dict[str, list[tuple[int, int]]]:
+        """
+        An internal function used to prune and rank the top ports for each IP address, necessary due to the nested nature
+        of this dictionary used.
+
+        :param history: The history to be pruned and ranked.
+        :param cutoff: The time at which a packet should be pruned after.
+        :param limit: The number of topmost values to acquire.
+        :return: A dictionary of strings (IPs) mapped to a list of tuples mapping a value (IP, port number)
+        to number of occurrences.
+        """
         top_ip_ports: dict[str, list[tuple[int, int]]] = {}
 
         for ip, ports in list(history.items()):
@@ -91,6 +133,12 @@ class NetworkStats:
         return top_ip_ports
 
     def prune_and_rank(self, limit: int = 5):
+        """
+        Function used to run the helper functions to prune and rank the various data dictionaries used to store ports, ips,
+        etc.
+
+        :param limit: The number of topmost values to acquire.
+        """
         with self._lock:
             cutoff = datetime.now(timezone.utc) - self.window_duration
             self.top_ips = self._prune_and_rank_dict(self.ip_history, cutoff, limit)
@@ -98,6 +146,11 @@ class NetworkStats:
             self.top_ip_to_ports = self._prune_nested_dict(self.ip_to_port, cutoff, limit)
 
     def update_or_record_alert(self, alert: Alert) -> None:
+        """
+        Used to record a new alert, or record an additional occurrence of an existing alert.
+
+        :param alert: The alert to be analysed.
+        """
         with self._lock:
             for existing in self.recent_alerts:
                 if existing.rule_name == alert.rule_name and existing.src_ip == alert.src_ip:

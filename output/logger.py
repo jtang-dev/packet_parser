@@ -12,11 +12,23 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 
 def log_alert(alert: Alert, file_handle: TextIO) -> None:
+    """
+    Adds incoming alerts to the json file for later analysis and triage.
+
+    :param alert: The alert to be process.
+    :param file_handle: The file to add the alert to.
+    """
     file_handle.write(json.dumps(alert.to_dict()) + "\n")
     file_handle.flush()
 
 
 def export_session_summary(stats: NetworkStats, filepath: str = os.path.join(DATA_DIR, "session_summary.json")) -> None:
+    """
+    Exports packets to a pcap file for later analysis and triage.
+
+    :param stats: An instance of the NetworkStats class to obtain the top ips and ports from the session.
+    :param filepath: The file to add the retrvieved data to.
+    """
     with stats._lock:
         cutoff = datetime.now(timezone.utc) - stats.window_duration
         stats.top_ips = stats._prune_and_rank_dict(stats.ip_history, cutoff, limit=10)
