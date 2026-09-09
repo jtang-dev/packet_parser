@@ -29,7 +29,10 @@ def process_packet_worker(
     while True:
         try:
             packet = packet_queue.get(block=True, timeout=0.1)
+        except queue.Empty:
+            continue
 
+        try:
             stats.record_packet(packet)
 
             alerts = engine.evaluate(packet)
@@ -43,11 +46,10 @@ def process_packet_worker(
                         alert_queue.put_nowait(alert)
                     except queue.Full:
                         pass
-
+        except Exception as e:
+            print(f"[ERROR in worker]: {e}")
+        finally:
             packet_queue.task_done()
-
-        except queue.Empty:
-            pass
 
 
 def process_logging_worker(

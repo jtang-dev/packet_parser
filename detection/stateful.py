@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from alerting.models import Alert
+from data.models import Alert, ParsedPacket
 from alerting.registry import TCP_RULES
-from ingestion.parser import ParsedPacket
 
 
 class PortScanDetector:
@@ -27,7 +26,7 @@ class PortScanDetector:
         """
 
         # Determine if packet is a valid part of a port scan attack
-        if packet.protocol == "TCP":
+        if "TCP" in packet.protocols:
             is_syn_initiation = (
                     packet.flags is not None
                     and "S" in packet.flags

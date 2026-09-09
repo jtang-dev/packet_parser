@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timezone
 from typing import TextIO
 
-from alerting.models import Alert
+from data.models import Alert
 from output.stats import NetworkStats
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

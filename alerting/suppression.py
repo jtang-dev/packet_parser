@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import threading
 from typing import Dict, Optional, Tuple
 
-from alerting.models import Alert, SuppressionState
+from data.models import Alert, SuppressionState
 
 
 class AlertDeduplicator:

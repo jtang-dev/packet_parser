@@ -1,9 +1,43 @@
-from collections import deque
 from datetime import datetime, timezone
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Sequence, Optional, Any
 
-from ingestion.parser import ParsedPacket
+@dataclass
+class DNSMetaData:
+    query: str
+    qtype: str
+    is_response: bool = False
+    rcode: Optional[int] = None
+    answers: list[str] = field(default_factory=list)
+    tx_id: Optional[int] = None
+
+@dataclass
+class ParsedPacket:
+    """
+    A custom packet dataclass built off of scapy's internal 'packet' class that allows for easier data access and modification.
+
+    :ivar frame_id: A unique identifier to differentiate between packets for triage purposes.
+    :ivar src_ip: The source ip of the packet.
+    :ivar dst_ip: The destination ip of the packet.
+    :ivar src_port: The source port of the packet.
+    :ivar dst_port: The destination port of the packet.
+    :ivar protocols: The specific protocols used by the packet (e.g. TCP, UDP, etc.).
+    :ivar flags: The TCP flags utilised by the packet.
+    :ivar timestamp: The time at which the packet was ingested.
+    """
+    frame_id: int
+    src_ip: str
+    dst_ip: str
+    src_port: Optional[int | str]
+    dst_port: Optional[int | str]
+    protocols: list[str]
+    flags: Optional[list[str]] = None
+    app_data: Optional[DNSMetaData] = None
+    timestamp: Optional[datetime] = None
+
+    def __str__(self) -> str:
+        formatted_time = self.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if self.timestamp else "N/A"
+        return f"[{formatted_time}] {'/'.join(self.protocols)} {self.src_ip}:{self.src_port} -> {self.dst_ip}:{self.dst_port}"
 
 
 @dataclass(frozen=True)
@@ -86,3 +120,5 @@ class SuppressionState:
     last_emitted: datetime
     last_seen: datetime
     occurrence_count: int = 1
+
+

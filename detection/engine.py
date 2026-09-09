@@ -1,7 +1,7 @@
 from detection.stateful import PortScanDetector
 from typing import Callable, Optional
 from detection.stateless import Alert, detect_suspicious_flags
-from ingestion.parser import ParsedPacket
+from data.models import ParsedPacket
 
 
 class DetectionEngine:

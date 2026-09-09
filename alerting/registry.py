@@ -1,4 +1,4 @@
-from alerting.models import RuleMetadata
+from data.models import RuleMetadata
 
 # A structured way to store the various stateless TCP rules to allow reference in other classes and files.
 

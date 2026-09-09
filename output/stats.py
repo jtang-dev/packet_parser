@@ -4,8 +4,7 @@ from datetime import datetime, timedelta, timezone
 import socket
 from typing import Any
 
-from alerting.models import Alert
-from ingestion.parser import ParsedPacket
+from data.models import Alert, ParsedPacket
 
 
 class NetworkStats:

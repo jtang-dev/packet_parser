@@ -1,35 +1,8 @@
 from datetime import datetime, timezone
-from typing import Optional
 import scapy.all as scapy
-from dataclasses import dataclass
 
-@dataclass
-class ParsedPacket:
-    """
-    A custom packet dataclass built off of scapy's internal 'packet' class that allows for easier data access and modification.
+from data.models import ParsedPacket, DNSMetaData
 
-    :ivar frame_id: A unique identifier to differentiate between packets for triage purposes.
-    :ivar src_ip: The source ip of the packet.
-    :ivar dst_ip: The destination ip of the packet.
-    :ivar src_port: The source port of the packet.
-    :ivar dst_port: The destination port of the packet.
-    :ivar protocol: The specific protocol used by the packet (e.g. TCP, UDP, etc.).
-    :ivar flags: The TCP flags utilised by the packet.
-    :ivar timestamp: The time at which the packet was ingested.
-
-    """
-    frame_id: int
-    src_ip: str
-    dst_ip: str
-    src_port: Optional[int | str]
-    dst_port: Optional[int | str]
-    protocol: str
-    flags: Optional[list[str]] = None
-    timestamp: Optional[datetime] = None
-
-    def __str__(self) -> str:
-        formatted_time = self.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") if self.timestamp else "N/A"
-        return f"[{formatted_time}] {self.protocol} {self.src_ip}:{self.src_port} -> {self.dst_ip}:{self.dst_port}"
 
 def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
     """
@@ -41,8 +14,9 @@ def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
     """
     src_ip, dst_ip = "N/A", "N/A"
     src_port, dst_port = "N/A", "N/A"
-    protocol = "OTHER"
+    protocols = []
     flags = None
+    pkt_metadata = None
     pkt_time = datetime.fromtimestamp(float(packet.time), tz=timezone.utc) if hasattr(packet, "time") else None
 
     if packet.haslayer("IP"):
@@ -54,16 +28,67 @@ def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
     elif packet.haslayer("ARP"):
         src_ip = packet["ARP"].psrc
         dst_ip = packet["ARP"].pdst
-        protocol = "ARP"
+        protocols.append("ARP")
 
     if packet.haslayer("TCP"):
-        protocol = "TCP"
+        protocols.append("TCP")
         src_port = packet["TCP"].sport
         dst_port = packet["TCP"].dport
         flags = list(str(packet["TCP"].flags))
     elif packet.haslayer("UDP"):
-        protocol = "UDP"
+        protocols.append("UDP")
         src_port = packet["UDP"].sport
         dst_port = packet["UDP"].dport
 
-    return ParsedPacket(frame_id, src_ip, dst_ip, src_port, dst_port, protocol, flags, pkt_time)
+    if packet.haslayer("DNS"):
+        protocols.insert(0, "DNS")
+        is_response = packet["DNS"].qr == 1
+        rcode = packet["DNS"].rcode if is_response else None
+        tx_id = packet["DNS"].id
+
+        query = "N/A"
+        qtype = "UNKNOWN"
+
+        if packet.haslayer("DNSQR"):
+            dns_qr = packet["DNSQR"]
+            raw_qname = dns_qr.qname
+            raw_qtype = dns_qr.qtype
+
+            if isinstance(raw_qname, bytes):
+                query = raw_qname.decode("utf-8", errors="replace").rstrip(".")
+            else:
+                query = str(raw_qname).rstrip(".")
+
+            qtype_map = {1: "A", 28: "AAAA", 5: "CNAME", 12: "PTR", 15: "MX", 16: "TXT", 255: "ANY"}
+            qtype = qtype_map.get(raw_qtype, str(raw_qtype))
+
+        answers = []
+        if is_response and packet.haslayer("DNSRR"):
+            current_rr = packet["DNS"].an
+            while current_rr and current_rr.haslayer("DNSRR"):
+                rdata = current_rr.rdata
+
+                if isinstance(rdata, bytes):
+                    clean_rdata = rdata.decode("utf-8", errors="replace").rstrip(".")
+                elif isinstance(rdata, list):
+                    clean_rdata = "".join(
+                        chunk.decode("utf-8", errors="replace") if isinstance(chunk, bytes) else str(chunk)
+                        for chunk in rdata
+                    )
+                else:
+                    clean_rdata = str(rdata)
+
+                answers.append(clean_rdata)
+                current_rr = current_rr.payload if hasattr(current_rr, "payload") else None
+
+        pkt_metadata = DNSMetaData(
+            query=query,
+            qtype=qtype,
+            is_response=is_response,
+            rcode=rcode,
+            answers=answers,
+            tx_id=tx_id,
+        )
+
+    if not protocols: protocols.append("OTHER")
+    return ParsedPacket(frame_id, src_ip, dst_ip, src_port, dst_port, protocols, flags, pkt_metadata, pkt_time)

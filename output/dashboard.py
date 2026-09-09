@@ -50,14 +50,15 @@ def render_packets(packets_to_display: list, is_paused: bool = False) -> Table:
     table.add_column("Time", width=12, justify="left", style="green", no_wrap=True)
     table.add_column("Source", ratio=3, style="green", overflow="ellipsis", no_wrap=True)
     table.add_column("Destination", ratio=3, style="green", overflow="ellipsis", no_wrap=True)
-    table.add_column("Protocol", width=10, justify="right", style="green", no_wrap=True)
+    table.add_column("Protocol", width=12, justify="right", style="green", no_wrap=True)
 
     for pkt in packets_to_display:
         time_str = pkt.timestamp.strftime("%H:%M:%S") if pkt.timestamp else "N/A"
         src_str = f"{pkt.src_ip}:{pkt.src_port}" if pkt.src_port is not None else str(pkt.src_ip)
         dst_str = f"{pkt.dst_ip}:{pkt.dst_port}" if pkt.dst_port is not None else str(pkt.dst_ip)
 
-        table.add_row(time_str, src_str, dst_str, str(pkt.protocol))
+        proto_str = "/".join(pkt.protocols) if pkt.protocols else "OTHER"
+        table.add_row(time_str, src_str, dst_str, proto_str)
 
     return table
 

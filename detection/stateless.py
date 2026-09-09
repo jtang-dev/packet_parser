@@ -1,8 +1,8 @@
 from typing import Optional
 
-from alerting.models import Alert
+from data.models import Alert, ParsedPacket
 from alerting.registry import TCP_RULES
-from ingestion.parser import ParsedPacket
+
 
 def detect_suspicious_flags(parsed_packet: ParsedPacket) -> Optional[Alert]:
     """
@@ -12,7 +12,7 @@ def detect_suspicious_flags(parsed_packet: ParsedPacket) -> Optional[Alert]:
     :param parsed_packet: A packet that has been parsed to allow for easier data handling.
     :return: An alert, if it is deemed that one is necessary.
     """
-    if parsed_packet.protocol == "TCP" and parsed_packet.flags is not None:
+    if "TCP" in parsed_packet.protocols and parsed_packet.flags is not None:
         flag_set = set(parsed_packet.flags)
 
         if len(flag_set) == 0:
