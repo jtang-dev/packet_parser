@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import scapy.all as scapy
 
-from data.models import ParsedPacket, DNSMetaData, TLSMetaData
+from data.models import ParsedPacket, DNSMetaData, TLSMetaData, HTTPMetaData
 
 RECORD_TYPES = {
     0x14: "ChangeCipherSpec",
@@ -50,6 +50,20 @@ def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
                     payload_len >= 5
                     and payload[0] in RECORD_TYPES
                     and payload[1:3] in (b"\x03\x01", b"\x03\x02", b"\x03\x03")
+            )
+
+            http_request = (
+                b"GET "
+                b"POST "
+                b"PUT "
+                b"DELETE "
+                b"HEAD "
+                b"OPTIONS "
+            )
+
+            http_response = (
+                b"HTTP/1.0 "
+                b"HTTP/1.1 "
             )
 
             if is_tls:
@@ -117,6 +131,69 @@ def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
                     cipher_suites=cipher_suites,
                     ja3_hash=None,
                 )
+            elif payload.split()[0] in http_request or payload.split()[0] in http_response:
+                protocols.insert(0, "HTTP")
+
+                idx = payload.find(b"\r\n\r\n")
+                header_bytes = payload[:idx] if idx != -1 else payload[:2048]
+                header_text = header_bytes.decode("latin-1", errors="replace")
+                lines = header_text.split("\r\n")
+
+                method = None
+                uri = None
+                status_code = None
+                is_response = False
+
+                if lines and lines[0].startswith("HTTP/1."):
+                    is_response = True
+                    parts = lines[0].split(" ")
+                    if len(parts) > 1 and parts[1].isdigit():
+                        status_code = int(parts[1])
+                elif lines:
+                    parts = lines[0].split(" ")
+                    if len(parts) >= 2:
+                        method = parts[0]
+                        uri = parts[1]
+
+                host = None
+                user_agent = None
+                content_type = None
+
+                for line in lines[1:]:
+                    if not line:
+                        break
+                    if ":" not in line:
+                        continue
+
+                    key, val = line.split(":", 1)
+                    key = key.strip().lower()
+                    val = val.strip()
+
+                    match key:
+                        case "host":
+                            host = val
+                        case "user-agent":
+                            user_agent = val
+                        case "content-type":
+                            content_type = val.split(";")[0].strip()
+
+                    if host and user_agent and content_type:
+                        break
+
+                pkt_metadata = HTTPMetaData(
+                    method=method,
+                    uri=uri,
+                    host=host,
+                    status_code=status_code,
+                    user_agent=user_agent,
+                    content_type=content_type,
+                    is_response=is_response,
+                )
+
+
+
+
+
 
     elif packet.haslayer("UDP"):
         protocols.append("UDP")

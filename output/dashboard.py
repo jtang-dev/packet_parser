@@ -2,7 +2,7 @@ from rich.layout import Layout
 from rich.table import Table
 import msvcrt
 
-from data.models import DNSMetaData, TLSMetaData
+from data.models import DNSMetaData, TLSMetaData, HTTPMetaData
 from output.stats import NetworkStats
 
 
@@ -71,6 +71,16 @@ def render_packets(packets_to_display: list, is_paused: bool = False) -> Table:
                 info_str = f"TLS SNI: {pkt.app_data.sni} [{ver}]"
             else:
                 info_str = f"TLS {pkt.app_data.content_type}"
+        elif isinstance(pkt.app_data, HTTPMetaData):
+            if pkt.app_data.is_response:
+                code = pkt.app_data.status_code or "RESP"
+                mime = f" ({pkt.app_data.content_type})" if pkt.app_data.content_type else ""
+                info_str = f"HTTP {code}{mime}"
+            else:
+                method = pkt.app_data.method or "REQ"
+                host = f"{pkt.app_data.host}" if pkt.app_data.host else ""
+                uri = pkt.app_data.uri or "/"
+                info_str = f"HTTP {method} {host}{uri}"
         elif pkt.flags:
             info_str = f"[{', '.join(pkt.flags)}]"
 

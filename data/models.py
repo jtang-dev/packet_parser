@@ -19,6 +19,15 @@ class TLSMetaData:
     cipher_suites: list[int] = field(default_factory=list)
     ja3_hash: Optional[str] = None
 
+@dataclass
+class HTTPMetaData:
+    method: Optional[str] = None
+    uri: Optional[str] = None
+    host: Optional[str] = None
+    status_code: Optional[int] = None
+    user_agent: Optional[str] = None
+    content_type: Optional[str] = None
+    is_response: bool = False
 
 @dataclass
 class ParsedPacket:
@@ -41,7 +50,7 @@ class ParsedPacket:
     dst_port: Optional[int | str]
     protocols: list[str]
     flags: Optional[list[str]] = None
-    app_data: DNSMetaData | TLSMetaData | None = None
+    app_data: DNSMetaData | TLSMetaData | HTTPMetaData | None = None
     timestamp: Optional[datetime] = None
 
     def __str__(self) -> str:
