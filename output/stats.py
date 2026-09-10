@@ -19,7 +19,7 @@ class NetworkStats:
 
     def __init__(self, max_display_packets: int=44, max_display_alerts: int=10,max_display_ports: int=10,
                  window_minutes: int = 5):
-        self.recent_packets = deque(maxlen=max_display_packets)
+        self.recent_packets = deque(maxlen=2000)
         self.recent_alerts = deque(maxlen=max_display_alerts)
         self.recent_ports = deque(maxlen=max_display_ports)
 

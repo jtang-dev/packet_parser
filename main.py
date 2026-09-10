@@ -11,7 +11,8 @@ from detection.worker import process_packet_worker, process_logging_worker, proc
 from ingestion.sniffer import start_sniffing
 from output.logger import export_session_summary
 from output.stats import NetworkStats
-from output.dashboard import make_layout, update_layout, handle_input
+from output.dashboard import make_layout, update_layout, handle_input, apply_packet_filter
+
 
 def parse_args():
     """
@@ -38,6 +39,7 @@ def parse_args():
     )
     return parser.parse_args()
 
+
 def main():
     """
     Main runner function that handles processes such as instantiation of global variables, beginning packet sniffing,
@@ -49,6 +51,9 @@ def main():
     is_paused = False
     frozen_packets = []
     selected_idx = -1
+    is_filtering = False
+    filter_buffer = ""
+    active_filter = ""
     packet_queue = queue.Queue()
     alert_queue = queue.Queue(maxsize=10000)
     engine = DetectionEngine()
@@ -107,12 +112,16 @@ def main():
                 stats.prune_and_rank(limit=10)
                 item_count = len(stats.top_ips)
 
-                new_pause_state, selected_idx = handle_input(is_paused, selected_idx, item_count)
+                new_pause_state, selected_idx, is_filtering, filter_buffer, active_filter = handle_input(
+                    is_paused, selected_idx, item_count, is_filtering, filter_buffer, active_filter
+                )
+
                 if new_pause_state and not is_paused:
                     frozen_packets = list(stats.recent_packets)
                 is_paused = new_pause_state
 
-                display_packets = frozen_packets if is_paused else list(stats.recent_packets)
+                raw_display = frozen_packets if is_paused else list(stats.recent_packets)
+                display_packets = apply_packet_filter(raw_display, active_filter)
 
                 if stats.top_ips and 0 <= selected_idx < len(stats.top_ips):
                     selected_ip = stats.top_ips[selected_idx][0]
@@ -125,7 +134,10 @@ def main():
                     selected_idx=selected_idx,
                     selected_ip=selected_ip,
                     display_packets=display_packets,
-                    is_paused=is_paused
+                    is_paused=is_paused,
+                    is_filtering=is_filtering,
+                    filter_buffer=filter_buffer,
+                    active_filter=active_filter
                 ))
                 time.sleep(0.03)
 

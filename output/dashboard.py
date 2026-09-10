@@ -32,7 +32,50 @@ def make_layout() -> Layout:
 
     return layout
 
-def render_packets(packets_to_display: list, is_paused: bool = False) -> Table:
+
+def apply_packet_filter(packets: list, query: str) -> list:
+    if not query:
+        return packets
+
+    terms = query.lower().split()
+    filtered = []
+
+    for pkt in packets:
+        matches_all_terms = True
+
+        for term in terms:
+            term_matched = False
+
+            if any(term in proto.lower() for proto in pkt.protocols):
+                term_matched = True
+            elif term in pkt.src_ip.lower() or term in pkt.dst_ip.lower():
+                term_matched = True
+            elif pkt.src_port and term == str(pkt.src_port):
+                term_matched = True
+            elif pkt.dst_port and term == str(pkt.dst_port):
+                term_matched = True
+            elif pkt.app_data:
+                if hasattr(pkt.app_data, "query") and pkt.app_data.query and term in pkt.app_data.query.lower():
+                    term_matched = True
+                elif hasattr(pkt.app_data, "sni") and pkt.app_data.sni and term in pkt.app_data.sni.lower():
+                    term_matched = True
+                elif hasattr(pkt.app_data, "host") and pkt.app_data.host and term in pkt.app_data.host.lower():
+                    term_matched = True
+                elif hasattr(pkt.app_data, "uri") and pkt.app_data.uri and term in pkt.app_data.uri.lower():
+                    term_matched = True
+
+            if not term_matched:
+                matches_all_terms = False
+                break
+
+        if matches_all_terms:
+            filtered.append(pkt)
+
+    return filtered
+
+
+def render_packets(packets_to_display: list, is_paused: bool = False, is_filtering: bool = False,
+                   filter_buffer: str = "", active_filter: str = "") -> Table:
     """
     Constructs the table displaying the incoming packets, showing time ingested, protocol used,
     source and destination port/IP, and application-layer metadata (DNS/TLS/HTTP).
@@ -41,11 +84,16 @@ def render_packets(packets_to_display: list, is_paused: bool = False) -> Table:
     :param is_paused: Indicates if table feed is paused for closer inspection.
     :return: The packet table to be constructed.
     """
-    title = (
-        "Incoming and Outgoing Packets [PAUSED - Press 'p' to Resume]"
-        if is_paused
-        else "Incoming and Outgoing Packets [Live - Press 'p' to Pause]"
-    )
+    status_tags = []
+    if is_paused:
+        status_tags.append("PAUSED")
+    if is_filtering:
+        status_tags.append(f"SEARCH: {filter_buffer}█")
+    elif active_filter:
+        status_tags.append(f"FILTER: '{active_filter}' [c to clear]")
+
+    status_str = f" [{' | '.join(status_tags)}]" if status_tags else " [Press 'f' to Filter, 'p' to Pause]"
+    title = f"Ingested Packets{status_str}"
 
     table = Table(title=title, expand=True, pad_edge=False, padding=(0, 1))
 
@@ -55,7 +103,7 @@ def render_packets(packets_to_display: list, is_paused: bool = False) -> Table:
     table.add_column("Protocol", width=12, justify="left", style="green", no_wrap=True)
     table.add_column("Info", ratio=4, style="cyan", overflow="ellipsis", no_wrap=True)
 
-    for pkt in packets_to_display:
+    for pkt in packets_to_display[-44:]:
         time_str = pkt.timestamp.strftime("%H:%M:%S") if pkt.timestamp else "N/A"
         src_str = f"{pkt.src_ip}:{pkt.src_port}" if pkt.src_port is not None else str(pkt.src_ip)
         dst_str = f"{pkt.dst_ip}:{pkt.dst_port}" if pkt.dst_port is not None else str(pkt.dst_ip)
@@ -123,6 +171,7 @@ def render_alerts(stats: NetworkStats) -> Table:
 
     return table
 
+
 def render_top_ips(stats: NetworkStats, selected_idx: int) -> Table:
     """
     Constructs the table that renders the most common IPs communicated with, and the number of communications. Also
@@ -150,6 +199,7 @@ def render_top_ips(stats: NetworkStats, selected_idx: int) -> Table:
 
     return table
 
+
 def render_top_ports(ports: list[tuple[int, int]], table_title: str) -> Table:
     """
     Constructs the table that renders the most common ports used on the host device. Will also display the top ports used
@@ -174,7 +224,9 @@ def render_top_ports(ports: list[tuple[int, int]], table_title: str) -> Table:
 
     return table
 
-def handle_input(is_paused: bool, selected_idx: int, item_count: int):
+
+def handle_input(is_paused: bool, selected_idx: int, item_count: int, is_filtering: bool = False,
+                 filter_buffer: str = "", active_filter: str = ""):
     """
     Detects when a user presses a key the corresponds to an appropriate action to be taken to alter the rendering of the
     tables.
@@ -183,19 +235,48 @@ def handle_input(is_paused: bool, selected_idx: int, item_count: int):
     :param selected_idx: The chosen IP address to display the top ports for, -1 when nothing is chosen.
     :param item_count: The number of top IPs.
     """
-    if msvcrt.kbhit():
+    while msvcrt.kbhit():
         key = msvcrt.getch()
-        if key in (b'p', b'P', b' '): # 'p' or 'space' to pause
-            return not is_paused, selected_idx
-        if key in (b'\x1b', b'c'): # 'escape' to unselect an IP address
-            return is_paused, -1
+
         if key in (b'\x00', b'\xe0'):
-            key = msvcrt.getch()
-            if key == b'H': # 'Up' key to select IP address
-                selected_idx = max(-1, selected_idx - 1)
-            if key == b'P': # 'Down' key to select IP address
-                selected_idx = min(item_count - 1, selected_idx + 1)
-    return is_paused, selected_idx
+            key2 = msvcrt.getch()
+            if not is_filtering:
+                if key2 == b'H':  # 'Up' key to select IP address
+                    selected_idx = max(-1, selected_idx - 1)
+                elif key2 == b'P':  # 'Down' key to select IP address
+                    selected_idx = min(item_count - 1, selected_idx + 1)
+            continue
+
+        if not is_filtering:
+            if key in (b'p', b'P', b' '):  # 'p' or 'space' to pause
+                is_paused = not is_paused
+            elif key == b'\x1b':  # 'escape' to unselect an IP address
+                selected_idx = -1
+                active_filter = ""
+            elif key in (b'f', b'F', b'/'):
+                is_filtering = True
+                filter_buffer = ""
+            elif key in (b'c', b'C'):
+                active_filter = ""
+
+        else:
+            if key == b'\r':
+                active_filter = filter_buffer.strip()
+                is_filtering = False
+            elif key == b'\x1b':
+                filter_buffer = ""
+                is_filtering = False
+            elif key == b'\x08':
+                filter_buffer = filter_buffer[:-1]
+            else:
+                try:
+                    char = key.decode("utf-8")
+                    if char.isprintable():
+                        filter_buffer += char
+                except UnicodeDecodeError:
+                    pass
+
+    return is_paused, selected_idx, is_filtering, filter_buffer, active_filter
 
 
 def update_layout(
@@ -204,7 +285,10 @@ def update_layout(
         selected_idx: int,
         selected_ip: str | None,
         display_packets: list | None = None,
-        is_paused: bool = False) -> Layout:
+        is_paused: bool = False,
+        is_filtering: bool = False,
+        filter_buffer: str = "",
+        active_filter: str = "") -> Layout:
     """
     Updates tables when an IP is selected for top port display, or the incoming packet feed is paused.
 
@@ -218,7 +302,7 @@ def update_layout(
     """
     packets = display_packets if display_packets is not None else stats.recent_packets
 
-    layout["left"].update(render_packets(packets, is_paused=is_paused))
+    layout["left"].update(render_packets(packets, is_paused, is_filtering, filter_buffer, active_filter))
     layout["alerts"].update(render_alerts(stats))
     layout["top_ips"].update(render_top_ips(stats, selected_idx))
 

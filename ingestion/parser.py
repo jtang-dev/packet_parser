@@ -190,11 +190,6 @@ def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
                     is_response=is_response,
                 )
 
-
-
-
-
-
     elif packet.haslayer("UDP"):
         protocols.append("UDP")
         src_port = packet["UDP"].sport
