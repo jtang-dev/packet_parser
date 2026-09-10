@@ -12,6 +12,15 @@ class DNSMetaData:
     tx_id: Optional[int] = None
 
 @dataclass
+class TLSMetaData:
+    content_type: str
+    sni: Optional[str] = None
+    version: Optional[str] = None
+    cipher_suites: list[int] = field(default_factory=list)
+    ja3_hash: Optional[str] = None
+
+
+@dataclass
 class ParsedPacket:
     """
     A custom packet dataclass built off of scapy's internal 'packet' class that allows for easier data access and modification.
@@ -32,7 +41,7 @@ class ParsedPacket:
     dst_port: Optional[int | str]
     protocols: list[str]
     flags: Optional[list[str]] = None
-    app_data: Optional[DNSMetaData] = None
+    app_data: DNSMetaData | TLSMetaData | None = None
     timestamp: Optional[datetime] = None
 
     def __str__(self) -> str:

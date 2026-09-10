@@ -1,8 +1,14 @@
 from datetime import datetime, timezone
 import scapy.all as scapy
 
-from data.models import ParsedPacket, DNSMetaData
+from data.models import ParsedPacket, DNSMetaData, TLSMetaData
 
+RECORD_TYPES = {
+    0x14: "ChangeCipherSpec",
+    0x15: "Alert",
+    0x16: "Handshake",
+    0x17: "Application Data",
+}
 
 def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
     """
@@ -35,6 +41,83 @@ def packet_parser(packet: scapy.Packet, frame_id: int) -> ParsedPacket:
         src_port = packet["TCP"].sport
         dst_port = packet["TCP"].dport
         flags = list(str(packet["TCP"].flags))
+
+        if packet.haslayer("Raw"):
+            payload = bytes(packet["TCP"].payload)
+            payload_len = len(payload)
+
+            is_tls = (
+                    payload_len >= 5
+                    and payload[0] in RECORD_TYPES
+                    and payload[1:3] in (b"\x03\x01", b"\x03\x02", b"\x03\x03")
+            )
+
+            if is_tls:
+                protocols.insert(0, "TLS")
+                content_type_str = RECORD_TYPES.get(payload[0], "Unknown")
+
+                sni = None
+                version = None
+                cipher_suites = []
+
+                if payload[0] == 0x16 and payload_len >= 43 and payload[5] == 0x01:
+                    version_val = int.from_bytes(payload[9:11], "big")
+                    match version_val:
+                        case 0x0301:
+                            version = "TLS 1.0"
+                        case 0x0302:
+                            version = "TLS 1.1"
+                        case 0x0303:
+                            version = "TLS 1.2"
+                        case 0x0304:
+                            version = "TLS 1.3"
+                        case _:
+                            version = f"TLS (0x{version_val:04x})"
+
+                    idx = 43
+                    try:
+                        session_id_len = payload[idx]
+                        idx += 1 + session_id_len
+
+                        ciphers_len = int.from_bytes(payload[idx:idx + 2], "big")
+                        idx += 2
+                        cipher_bytes = payload[idx:idx + ciphers_len]
+                        cipher_suites = [
+                            int.from_bytes(cipher_bytes[i:i + 2], "big")
+                            for i in range(0, len(cipher_bytes), 2)
+                        ]
+                        idx += ciphers_len
+
+                        comp_len = payload[idx]
+                        idx += 1 + comp_len
+
+                        ext_total_len = int.from_bytes(payload[idx:idx + 2], "big")
+                        idx += 2
+                        ext_end = idx + ext_total_len
+
+                        while idx + 4 <= ext_end:
+                            ext_type = int.from_bytes(payload[idx:idx + 2], "big")
+                            ext_len = int.from_bytes(payload[idx + 2:idx + 4], "big")
+                            idx += 4
+
+                            if ext_type == 0x0000:
+                                if payload[idx + 2] == 0x00:
+                                    name_len = int.from_bytes(payload[idx + 3:idx + 5], "big")
+                                    sni = payload[idx + 5:idx + 5 + name_len].decode("utf-8", errors="replace")
+                                    break
+                            idx += ext_len
+
+                    except (IndexError, ValueError):
+                        pass
+
+                pkt_metadata = TLSMetaData(
+                    content_type=content_type_str,
+                    sni=sni,
+                    version=version,
+                    cipher_suites=cipher_suites,
+                    ja3_hash=None,
+                )
+
     elif packet.haslayer("UDP"):
         protocols.append("UDP")
         src_port = packet["UDP"].sport

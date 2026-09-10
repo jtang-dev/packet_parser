@@ -2,6 +2,7 @@ from rich.layout import Layout
 from rich.table import Table
 import msvcrt
 
+from data.models import DNSMetaData, TLSMetaData
 from output.stats import NetworkStats
 
 
@@ -33,32 +34,47 @@ def make_layout() -> Layout:
 
 def render_packets(packets_to_display: list, is_paused: bool = False) -> Table:
     """
-    Constructs the table displaying the incoming packets, showing time ingested, protocol used, and source and destination
-    port and IP for each.
+    Constructs the table displaying the incoming packets, showing time ingested, protocol used,
+    source and destination port/IP, and application-layer metadata (DNS/TLS/HTTP).
 
-    :param packets_to_display: List of incoming packets, recieved from the NetworkStats class which dequeues packets
-    from the globalqueue.
-    :param is_paused: Table has an option to be paused, allowing a prospective security expert a closer look at any suspicous
-    packets in the ingestion feed.
+    :param packets_to_display: List of incoming packets, received from the NetworkStats class.
+    :param is_paused: Indicates if table feed is paused for closer inspection.
     :return: The packet table to be constructed.
     """
+    title = (
+        "Incoming and Outgoing Packets [PAUSED - Press 'p' to Resume]"
+        if is_paused
+        else "Incoming and Outgoing Packets [Live - Press 'p' to Pause]"
+    )
 
-    title = "Incoming and Outgoing Packets [PAUSED - Press 'p' to Resume]" if is_paused else "Incoming and Outgoing Packets [Live - Press 'p' to Pause]"
+    table = Table(title=title, expand=True, pad_edge=False, padding=(0, 1))
 
-    table = Table(title=title, expand=True)
-
-    table.add_column("Time", width=12, justify="left", style="green", no_wrap=True)
-    table.add_column("Source", ratio=3, style="green", overflow="ellipsis", no_wrap=True)
-    table.add_column("Destination", ratio=3, style="green", overflow="ellipsis", no_wrap=True)
-    table.add_column("Protocol", width=12, justify="right", style="green", no_wrap=True)
+    table.add_column("Time", width=10, justify="left", style="green", no_wrap=True)
+    table.add_column("Source", ratio=2, style="green", overflow="ellipsis", no_wrap=True)
+    table.add_column("Destination", ratio=2, style="green", overflow="ellipsis", no_wrap=True)
+    table.add_column("Protocol", width=12, justify="left", style="green", no_wrap=True)
+    table.add_column("Info", ratio=4, style="cyan", overflow="ellipsis", no_wrap=True)
 
     for pkt in packets_to_display:
         time_str = pkt.timestamp.strftime("%H:%M:%S") if pkt.timestamp else "N/A"
         src_str = f"{pkt.src_ip}:{pkt.src_port}" if pkt.src_port is not None else str(pkt.src_ip)
         dst_str = f"{pkt.dst_ip}:{pkt.dst_port}" if pkt.dst_port is not None else str(pkt.dst_ip)
-
         proto_str = "/".join(pkt.protocols) if pkt.protocols else "OTHER"
-        table.add_row(time_str, src_str, dst_str, proto_str)
+
+        info_str = "-"
+        if isinstance(pkt.app_data, DNSMetaData):
+            direction = "RESP" if pkt.app_data.is_response else "QUERY"
+            info_str = f"DNS {direction} {pkt.app_data.query} ({pkt.app_data.qtype})"
+        elif isinstance(pkt.app_data, TLSMetaData):
+            if pkt.app_data.sni:
+                ver = pkt.app_data.version or "TLS"
+                info_str = f"TLS SNI: {pkt.app_data.sni} [{ver}]"
+            else:
+                info_str = f"TLS {pkt.app_data.content_type}"
+        elif pkt.flags:
+            info_str = f"[{', '.join(pkt.flags)}]"
+
+        table.add_row(time_str, src_str, dst_str, proto_str, info_str)
 
     return table
 
