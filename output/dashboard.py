@@ -82,6 +82,10 @@ def render_packets(packets_to_display: list, is_paused: bool = False, is_filteri
 
     :param packets_to_display: List of incoming packets, received from the NetworkStats class.
     :param is_paused: Indicates if table feed is paused for closer inspection.
+    :param is_filtering: Whether the packet ingestion feed is currently being filtered
+    :param filter_buffer: The filter the user is currently typing.
+    :param active_filter: The current filter being applied to the packet ingestion feed.
+
     :return: The packet table to be constructed.
     """
     status_tags = []
@@ -109,6 +113,7 @@ def render_packets(packets_to_display: list, is_paused: bool = False, is_filteri
         dst_str = f"{pkt.dst_ip}:{pkt.dst_port}" if pkt.dst_port is not None else str(pkt.dst_ip)
         proto_str = "/".join(pkt.protocols) if pkt.protocols else "OTHER"
 
+        # Custom packet display based on the type of protocol being used, generally displays the most important info
         info_str = "-"
         if isinstance(pkt.app_data, DNSMetaData):
             direction = "RESP" if pkt.app_data.is_response else "QUERY"
@@ -234,6 +239,9 @@ def handle_input(is_paused: bool, selected_idx: int, item_count: int, is_filteri
     :param is_paused: Whether the incoming packets table is paused or displays a live ingestion feed.
     :param selected_idx: The chosen IP address to display the top ports for, -1 when nothing is chosen.
     :param item_count: The number of top IPs.
+    :param is_filtering: Whether the ingestion feed is currently being filtered.
+    :param filter_buffer: The filter the user is currently typing.
+    :param active_filter: The current filter being applied.
     """
     while msvcrt.kbhit():
         key = msvcrt.getch()
@@ -297,7 +305,10 @@ def update_layout(
     :param selected_idx: Selected index for IP port display.
     :param selected_ip: Selected IP for port display.
     :param display_packets: A freeze-frame of packets to display when ingestion feed is paused.
-    :param is_paused: Whether the packet ingestion feed is paused
+    :param is_paused: Whether the packet ingestion feed is paused.
+    :param is_filtering: Whether the ingestion feed is currently being filtered.
+    :param filter_buffer: The filter the user is currently typing.
+    :param active_filter: The current filter being applied.
     :return: The layout to be displayed.
     """
     packets = display_packets if display_packets is not None else stats.recent_packets
