@@ -1,5 +1,6 @@
 from rich.layout import Layout
 from rich.table import Table
+from rich.panel import Panel
 import msvcrt
 
 from data.models import DNSMetaData, TLSMetaData, HTTPMetaData
@@ -22,6 +23,7 @@ def make_layout() -> Layout:
 
     layout["right"].split_column(
         Layout(name="alerts", ratio=1),
+        Layout(name="throughput", size=3),
         Layout(name="stats", size=15)
     )
 
@@ -107,7 +109,7 @@ def render_packets(packets_to_display: list, is_paused: bool = False, is_filteri
     table.add_column("Protocol", width=12, justify="left", style="green", no_wrap=True)
     table.add_column("Info", ratio=4, style="cyan", overflow="ellipsis", no_wrap=True)
 
-    for pkt in packets_to_display[-44:]:
+    for pkt in packets_to_display:
         time_str = pkt.timestamp.strftime("%H:%M:%S") if pkt.timestamp else "N/A"
         src_str = f"{pkt.src_ip}:{pkt.src_port}" if pkt.src_port is not None else str(pkt.src_ip)
         dst_str = f"{pkt.dst_ip}:{pkt.dst_port}" if pkt.dst_port is not None else str(pkt.dst_ip)
@@ -229,6 +231,30 @@ def render_top_ports(ports: list[tuple[int, int]], table_title: str) -> Table:
 
     return table
 
+def render_throughput(stats: NetworkStats) -> Panel:
+    """
+    Renders a 20-second rolling ASCII sparkline showing packet throughput per second.
+    """
+    history = stats.get_throughput()
+    max_val = max(history) if history else 0
+
+    # 8-level Unicode block elements
+    ticks = [" ", " ", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+
+    spark_chars = []
+    for count in history:
+        if max_val == 0 or count == 0:
+            spark_chars.append(" ")
+        else:
+            idx = int((count / max_val) * (len(ticks) - 1))
+            spark_chars.append(ticks[idx])
+
+    sparkline = "".join(spark_chars)
+    current_rate = history[-1] if history else 0
+
+    display_text = f"[bold green]{sparkline}[/] [dim]|[/] Current: [bold cyan]{current_rate} pkt/s[/] [dim]|[/] Peak: [bold yellow]{max_val} pkt/s[/]"
+
+    return Panel(display_text, title="Throughput (Last 20s)", border_style="green", expand=True)
 
 def handle_input(is_paused: bool, selected_idx: int, item_count: int, is_filtering: bool = False,
                  filter_buffer: str = "", active_filter: str = ""):
@@ -315,6 +341,7 @@ def update_layout(
 
     layout["left"].update(render_packets(packets, is_paused, is_filtering, filter_buffer, active_filter))
     layout["alerts"].update(render_alerts(stats))
+    layout["throughput"].update(render_throughput(stats))
     layout["top_ips"].update(render_top_ips(stats, selected_idx))
 
     if selected_ip and (ports := stats.get_ports_for_ip(selected_ip)):

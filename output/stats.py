@@ -2,6 +2,7 @@ import threading
 from collections import deque
 from datetime import datetime, timedelta, timezone
 import socket
+from itertools import islice
 from typing import Any
 
 from data.models import Alert, ParsedPacket
@@ -19,9 +20,15 @@ class NetworkStats:
 
     def __init__(self, max_display_packets: int=44, max_display_alerts: int=10,max_display_ports: int=10,
                  window_minutes: int = 5):
+        self.max_display_packets = max_display_packets
+
         self.recent_packets = deque(maxlen=2000)
         self.recent_alerts = deque(maxlen=max_display_alerts)
         self.recent_ports = deque(maxlen=max_display_ports)
+
+        self.packet_throughput = deque([0] * 20, maxlen=20)
+        self.packet_count = 0
+        self.current_packet_period = None
 
         self.ip_history: dict[str, list[datetime]] = {}
         self.port_history: dict[int, list[datetime]] = {}
@@ -48,6 +55,20 @@ class NetworkStats:
         """
         return self.top_ip_to_ports.get(ip, [])
 
+    def get_all_recent_packets(self) -> list[ParsedPacket]:
+        """
+        Returns a thread-safe snapshot of all recent packets in the buffer.
+        """
+        with self._lock:
+            return list(self.recent_packets)
+
+    def get_throughput(self) -> list[int]:
+        """
+        Returns a thread-safe snapshot of the rolling packet throughput.
+        """
+        with self._lock:
+            return list(self.packet_throughput)
+
     def record_packet(self, packet: ParsedPacket) -> None:
         """
         Ingests a packet and updates temporal tracking for IP addresses, destination ports,
@@ -57,6 +78,29 @@ class NetworkStats:
         """
         with self._lock:
             pkt_time = packet.timestamp if packet.timestamp is not None else datetime.now(timezone.utc)
+
+            pkt_second = pkt_time.replace(microsecond=0)
+
+            if self.current_packet_period is None:
+                self.current_packet_period = pkt_second
+                self.packet_count = 1
+            elif pkt_second == self.current_packet_period:
+                self.packet_count += 1
+            elif pkt_second > self.current_packet_period:
+                diff_seconds = int((pkt_second - self.current_packet_period).total_seconds())
+
+                if diff_seconds == 1:
+                    # Standard 1-second rollover: push the old count and start fresh
+                    self.packet_throughput.append(self.packet_count)
+                else:
+                    # A gap occurred: push the final count of the old period,
+                    # then backfill zero-traffic seconds for the missing gap
+                    self.packet_throughput.append(self.packet_count)
+                    for _ in range(diff_seconds - 1):
+                        self.packet_throughput.append(0)
+
+                self.current_packet_period = pkt_second
+                self.packet_count = 1
 
             # Track IP communications
             ip_address = packet.src_ip if packet.src_ip != self.host_address else packet.dst_ip
@@ -139,6 +183,17 @@ class NetworkStats:
         :param limit: The number of topmost values to acquire.
         """
         with self._lock:
+            now_second = datetime.now(timezone.utc).replace(microsecond=0)
+
+            # Advance the throughput timeline even if no packets are arriving
+            if self.current_packet_period is not None and now_second > self.current_packet_period:
+                diff_seconds = int((now_second - self.current_packet_period).total_seconds())
+                self.packet_throughput.append(self.packet_count)
+                for _ in range(diff_seconds - 1):
+                    self.packet_throughput.append(0)
+                self.current_packet_period = now_second
+                self.packet_count = 0
+
             cutoff = datetime.now(timezone.utc) - self.window_duration
             self.top_ips = self._prune_and_rank_dict(self.ip_history, cutoff, limit)
             self.top_ports = self._prune_and_rank_dict(self.port_history, cutoff, limit)

@@ -117,11 +117,12 @@ def main():
                 )
 
                 if new_pause_state and not is_paused:
-                    frozen_packets = list(stats.recent_packets)
+                    frozen_packets = stats.get_all_recent_packets()
                 is_paused = new_pause_state
 
-                raw_display = frozen_packets if is_paused else list(stats.recent_packets)
-                display_packets = apply_packet_filter(raw_display, active_filter)
+                raw_packets = frozen_packets if is_paused else stats.get_all_recent_packets()
+                filtered_packets = apply_packet_filter(raw_packets, active_filter)
+                display_packets = filtered_packets[-stats.max_display_packets:]
 
                 if stats.top_ips and 0 <= selected_idx < len(stats.top_ips):
                     selected_ip = stats.top_ips[selected_idx][0]
